@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PinVoz">
+<title>PinVoz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root {
+  --bg: #1a1f1a;
+  --surface: #1f261f;
+  --surface2: #263026;
+  --accent: #00e5aa;
+  --accent2: #ff3d71;
+  --accent3: #aaff00;
+  --text: #eef2ee;
+  --muted: #7a9070;
+  --border: rgba(255,255,255,0.10);
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Syne', sans-serif;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+header {
+  z-index: 100;
+  padding: 14px 20px 10px;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.logo { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+.logo span { color: var(--accent); }
+.pin-count {
+  font-family: 'DM Mono', monospace;
+  font-size: 12px; color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 4px 10px; border-radius: 20px;
+}
+.pin-count b { color: var(--accent3); }
+#map { flex: 1; width: 100%; z-index: 1; }
+.map-wrap { position: relative; flex: 1; display: flex; flex-direction: column; }
+.locate-btn {
+  position: absolute; top: 12px; right: 14px; z-index: 50;
+  width: 42px; height: 42px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; color: var(--text); font-size: 18px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+}
+.bottom {
+  z-index: 100;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 14px 20px 28px;
+  flex-shrink: 0;
+}
+.status {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px; color: var(--muted);
+  text-align: center; margin-bottom: 12px;
+  min-height: 16px; letter-spacing: 0.5px;
+  text-transform: uppercase; transition: color 0.3s;
+}
+.status.listening { color: var(--accent); animation: pulse 1s infinite; }
+.status.success { color: var(--accent3); }
+.status.error { color: var(--accent2); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.btn-row { display: flex; gap: 10px; align-items: center; }
+.btn-voice {
+  flex: 1; height: 54px; border-radius: 14px; border: none;
+  background: var(--accent); color: #000;
+  font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700;
+  letter-spacing: 0.5px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: all 0.2s; position: relative; overflow: hidden;
+}
+.btn-voice:active { transform: scale(0.97); }
+.btn-voice.recording { background: var(--accent2); box-shadow: 0 0 30px rgba(255,61,113,0.5); }
+.btn-voice.recording::after {
+  content: ''; position: absolute; inset: -2px;
+  border-radius: 16px; border: 2px solid var(--accent2);
+  animation: ring 1s infinite;
+}
+@keyframes ring { 0%{transform:scale(1);opacity:1} 100%{transform:scale(1.08);opacity:0} }
+.btn-icon {
+  width: 48px; height: 54px; border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface2); color: var(--text);
+  font-size: 20px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+}
+.btn-icon:active { transform: scale(0.95); }
+.wave { display: none; gap: 3px; align-items: center; height: 18px; }
+.wave.on { display: flex; }
+.wave span { width: 3px; background: #000; border-radius: 2px; animation: wv 0.6s ease-in-out infinite; }
+.wave span:nth-child(1){animation-delay:0s;height:6px}
+.wave span:nth-child(2){animation-delay:.1s;height:12px}
+.wave span:nth-child(3){animation-delay:.2s;height:18px}
+.wave span:nth-child(4){animation-delay:.1s;height:12px}
+.wave span:nth-child(5){animation-delay:0s;height:6px}
+@keyframes wv { 0%,100%{transform:scaleY(0.5)} 50%{transform:scaleY(1)} }
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+  z-index: 200; display: none; align-items: flex-end;
+}
+.overlay.open { display: flex; }
+.modal {
+  width: 100%; background: var(--surface);
+  border-radius: 24px 24px 0 0;
+  border-top: 1px solid var(--border);
+  padding: 20px 20px 40px;
+  animation: slideup 0.3s cubic-bezier(0.34,1.56,0.64,1);
+}
+.list-modal {
+  width: 100%; background: var(--surface);
+  border-radius: 24px 24px 0 0;
+  border-top: 1px solid var(--border);
+  padding: 20px 20px 40px;
+  max-height: 72dvh; overflow-y: auto;
+  animation: slideup 0.3s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes slideup { from{transform:translateY(100%)} to{transform:translateY(0)} }
+.handle { width:36px; height:4px; background:var(--border); border-radius:2px; margin:0 auto 18px; }
+.modal-title { font-size:18px; font-weight:800; margin-bottom:4px; display:flex; align-items:center; gap:8px; }
+.modal-coords { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); margin-bottom:14px; }
+.modal textarea {
+  width:100%; background:var(--surface2);
+  border:1px solid var(--border); border-radius:12px;
+  color:var(--text); font-family:'DM Mono',monospace;
+  font-size:14px; padding:14px; resize:none; height:90px;
+  outline:none; transition:border-color 0.2s;
+}
+.modal textarea:focus { border-color:var(--accent); }
+.modal-btns { display:flex; gap:10px; margin-top:12px; }
+.btn-save { flex:1; height:46px; border-radius:12px; border:none; background:var(--accent3); color:#000; font-family:'Syne',sans-serif; font-weight:700; font-size:14px; cursor:pointer; }
+.btn-del { width:46px; height:46px; border-radius:12px; border:1px solid rgba(255,61,113,0.3); background:transparent; color:var(--accent2); font-size:18px; cursor:pointer; }
+.btn-cls { width:46px; height:46px; border-radius:12px; border:1px solid var(--border); background:transparent; color:var(--muted); font-size:18px; cursor:pointer; }
+.list-header { font-size:18px; font-weight:800; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; }
+.list-close { background:var(--surface2); border:1px solid var(--border); color:var(--text); width:32px; height:32px; border-radius:50%; font-size:16px; cursor:pointer; }
+.pin-item { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:8px; cursor:pointer; }
+.pin-item:active { border-color:var(--accent); }
+.pin-name { font-weight:600; font-size:14px; margin-bottom:3px; }
+.pin-note { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.pin-coords { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); margin-top:3px; }
+.empty { text-align:center; color:var(--muted); font-family:'DM Mono',monospace; font-size:12px; padding:30px 0; }
+.toast {
+  position:fixed; top:20px; left:50%;
+  transform:translateX(-50%) translateY(-70px);
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:30px; padding:10px 20px;
+  font-size:13px; font-weight:600; z-index:300;
+  transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  white-space:nowrap; pointer-events:none;
+}
+.toast.show { transform:translateX(-50%) translateY(0); }
+.toast.accent { color:var(--accent3); }
+.toast.error { color:var(--accent2); }
+.custom-pin {
+  width:28px; height:28px;
+  border-radius:50% 50% 50% 0; transform:rotate(-45deg);
+  border:3px solid #000;
+  background:#00e5aa; box-shadow:0 2px 10px rgba(0,229,170,0.6);
+}
+.custom-pin.noted { background:#aaff00; box-shadow:0 2px 10px rgba(170,255,0,0.6); }
+.leaflet-popup-content-wrapper {
+  background:#1f261f !important; border:1px solid rgba(255,255,255,0.1) !important;
+  border-radius:12px !important; color:#eef2ee !important;
+  box-shadow:0 8px 30px rgba(0,0,0,0.6) !important;
+}
+.leaflet-popup-tip { background:#1f261f !important; }
+.pop-title { font-family:'Syne',sans-serif; font-weight:700; font-size:13px; color:#aaff00; margin-bottom:4px; }
+.pop-note { font-family:'DM Mono',monospace; font-size:11px; color:#7a9070; white-space:pre-wrap; max-width:160px; }
+.pop-edit { margin-top:8px; font-family:'Syne',sans-serif; font-size:11px; font-weight:600; color:#00e5aa; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Pin<span>Voz</span></div>
+  <div class="pin-count">Pins: <b id="counter">0</b></div>
+</header>
+
+<div class="map-wrap">
+  <div id="map"></div>
+  <button class="locate-btn" onclick="goToMe()">📍</button>
+</div>
+
+<div class="bottom">
+  <div class="status" id="status">Di "marcar" o pulsa el botón</div>
+  <div class="btn-row">
+    <button class="btn-voice" id="voicebtn" onclick="toggleVoice()">
+      <div class="wave" id="wave"><span></span><span></span><span></span><span></span><span></span></div>
+      <span id="btnlabel">🎤 Hablar</span>
+    </button>
+    <button class="btn-icon" onclick="markNow()">📌</button>
+    <button class="btn-icon" onclick="openList()">☰</button>
+  </div>
+</div>
+
+<!-- MODAL EDITAR -->
+
+<div class="overlay" id="editOverlay" onclick="if(event.target===this)closeEdit()">
+  <div class="modal">
+    <div class="handle"></div>
+    <div class="modal-title">📌 <span id="editName"></span></div>
+    <div class="modal-coords" id="editCoords"></div>
+    <textarea id="editNote" placeholder="Añade una nota a este punto..."></textarea>
+    <div class="modal-btns">
+      <button class="btn-save" onclick="saveNote()">Guardar</button>
+      <button class="btn-del" onclick="deletePin()">🗑</button>
+      <button class="btn-cls" onclick="closeEdit()">✕</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL LISTA -->
+
+<div class="overlay" id="listOverlay" onclick="if(event.target===this)closeList()">
+  <div class="list-modal">
+    <div class="handle"></div>
+    <div class="list-header">
+      Todos los pins
+      <button class="list-close" onclick="closeList()">✕</button>
+    </div>
+    <div id="listContent"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let pins = [];
+try { pins = JSON.parse(localStorage.getItem('pinvoz') || '[]'); } catch(e){}
+let currentId = null;
+let map, userDot, recog, listening = false;
+
+// MAP
+const L = window.L;
+map = L.map('map', { zoomControl:false, attributionControl:false }).setView([40.4168,-3.7038], 13);
+L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom:17 }).addTo(map);
+
+pins.forEach(addMarker);
+updateCounter();
+goToMe(true);
+
+function goToMe(silent) {
+  if (!navigator.geolocation) { if(!silent) toast('GPS no disponible','error'); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    const {latitude:lat, longitude:lng} = pos.coords;
+    map.setView([lat,lng], 16);
+    if (userDot) userDot.remove();
+    userDot = L.circleMarker([lat,lng], {radius:8,fillColor:'#00e5aa',color:'#000',weight:2,fillOpacity:0.9}).addTo(map);
+  }, () => { if(!silent) toast('No se pudo obtener ubicación','error'); });
+}
+
+function markNow() {
+  navigator.geolocation.getCurrentPosition(pos => {
+    const {latitude:lat, longitude:lng} = pos.coords;
+    const pin = { id:Date.now(), lat, lng, name:`Pin #${pins.length+1}`, note:'', date:new Date().toLocaleString('es-ES') };
+    pins.push(pin);
+    save();
+    addMarker(pin);
+    updateCounter();
+    map.setView([lat,lng],17);
+    toast('📌 Punto marcado','accent');
+    openEdit(pin.id);
+  }, () => toast('No se pudo obtener ubicación','error'));
+}
+
+function addMarker(pin) {
+  const icon = L.divIcon({
+    className:'',
+    html:`<div class="custom-pin${pin.note?' noted':''}"></div>`,
+    iconSize:[28,28], iconAnchor:[14,28], popupAnchor:[0,-30]
+  });
+  const m = L.marker([pin.lat,pin.lng],{icon}).addTo(map);
+  m.bindPopup(()=>{
+    const p=pins.find(x=>x.id===pin.id)||pin;
+    return `<div class="pop-title">${p.name}</div><div class="pop-note">${p.note||'(sin nota)'}</div><div class="pop-note" style="margin-top:4px;opacity:.5">${p.date}</div><div class="pop-edit" onclick="openEdit(${pin.id});map.closePopup()">✏️ Editar</div>`;
+  });
+  pin._m = m;
+}
+
+function openEdit(id) {
+  currentId = id;
+  const p = pins.find(x=>x.id===id); if(!p) return;
+  document.getElementById('editName').textContent = p.name;
+  document.getElementById('editCoords').textContent = `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)} · ${p.date}`;
+  document.getElementById('editNote').value = p.note||'';
+  document.getElementById('editOverlay').classList.add('open');
+  setTimeout(()=>document.getElementById('editNote').focus(),400);
+}
+function closeEdit() { document.getElementById('editOverlay').classList.remove('open'); currentId=null; }
+
+function saveNote() {
+  if(!currentId) return;
+  const p = pins.find(x=>x.id===currentId); if(!p) return;
+  p.note = document.getElementById('editNote').value;
+  if(p._m) p._m.setIcon(L.divIcon({className:'',html:`<div class="custom-pin${p.note?' noted':''}"></div>`,iconSize:[28,28],iconAnchor:[14,28],popupAnchor:[0,-30]}));
+  save(); toast('✓ Nota guardada','accent'); closeEdit();
+}
+
+function deletePin() {
+  if(!currentId) return;
+  const i = pins.findIndex(x=>x.id===currentId); if(i===-1) return;
+  if(pins[i]._m) pins[i]._m.remove();
+  pins.splice(i,1); save(); updateCounter(); toast('Punto eliminado','error'); closeEdit();
+}
+
+function openList() {
+  const el = document.getElementById('listContent');
+  el.innerHTML = pins.length ? pins.map(p=>`
+    <div class="pin-item" onclick="flyTo(${p.id})">
+      <div class="pin-name">${p.name}</div>
+      <div class="pin-note">${p.note||'(sin nota)'}</div>
+      <div class="pin-coords">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</div>
+    </div>`).join('') : '<div class="empty">No hay pins todavía.<br>Di "marcar" o pulsa 📌</div>';
+  document.getElementById('listOverlay').classList.add('open');
+}
+function closeList() { document.getElementById('listOverlay').classList.remove('open'); }
+
+function flyTo(id) {
+  const p = pins.find(x=>x.id===id); if(!p) return;
+  closeList();
+  map.flyTo([p.lat,p.lng],17,{duration:1});
+  setTimeout(()=>p._m&&p._m.openPopup(),1100);
+}
+
+// VOICE
+function toggleVoice() {
+  const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR) { toast('Usa Safari en iPhone para voz','error'); setStatus('Voz no disponible en este navegador','error'); return; }
+  if(listening) {
+    listening=false; recog&&recog.stop();
+    document.getElementById('voicebtn').classList.remove('recording');
+    document.getElementById('wave').classList.remove('on');
+    document.getElementById('btnlabel').style.display='';
+    setStatus('Di "marcar" o pulsa el botón'); return;
+  }
+  recog = new SR();
+  recog.lang='es-ES'; recog.continuous=true; recog.interimResults=true;
+  recog.onstart=()=>{ listening=true; setStatus('Escuchando...','listening'); document.getElementById('voicebtn').classList.add('recording'); document.getElementById('wave').classList.add('on'); document.getElementById('btnlabel').style.display='none'; };
+  recog.onend=()=>{ if(listening) recog.start(); };
+  recog.onerror=()=>{ if(listening) setTimeout(()=>recog.start(),500); };
+  recog.onresult=e=>{
+    const last=e.results[e.results.length-1];
+    const t=last[0].transcript.toLowerCase().trim();
+    setStatus(`"${t}"`, 'listening');
+    if(last.isFinal && ['marcar','marca','pin','punto','aquí','aqui'].some(w=>t.includes(w))) markNow();
+  };
+  recog.start();
+}
+
+function setStatus(msg,type='') { const el=document.getElementById('status'); el.textContent=msg; el.className='status '+type; }
+function updateCounter() { document.getElementById('counter').textContent=pins.length; }
+function save() { localStorage.setItem('pinvoz', JSON.stringify(pins.map(({_m,...r})=>r))); }
+function toast(msg,type='') {
+  const t=document.getElementById('toast'); t.textContent=msg; t.className=`toast show ${type}`;
+  setTimeout(()=>t.className='toast',2200);
+}
+</script>
+
+</body>
+</html>

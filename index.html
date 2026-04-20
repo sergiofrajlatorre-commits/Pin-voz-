@@ -102,7 +102,7 @@ header{z-index:100;padding:14px 20px 10px;background:var(--bg);display:flex;alig
 <body>
 <header>
   <div class="logo">Pin<span>Voz</span></div>
-  <div class="pin-count">Pins: <b id="counter">0</b></div>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;"><div class="pin-count">Pins: <b id="counter">0</b></div><div id="wakeLockStatus" style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted);">🔆 cargando...</div></div>
 </header>
 <div class="map-wrap">
   <div id="map"></div>
@@ -213,7 +213,7 @@ function beep(freqs, dur) {
       const g = ctx.createGain();
       o.connect(g); g.connect(ctx.destination);
       o.frequency.value = f;
-      g.gain.setValueAtTime(0.25, ctx.currentTime + i*dur);
+      g.gain.setValueAtTime(1.0, ctx.currentTime + i*dur);
       g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i*dur + dur);
       o.start(ctx.currentTime + i*dur);
       o.stop(ctx.currentTime + i*dur + dur);
@@ -221,8 +221,8 @@ function beep(freqs, dur) {
   } catch(e){}
 }
 // 1 pitido al marcar, 2 al guardar
-function beepMark() { beep([880], 0.12); }
-function beepSave()  { beep([660, 1100], 0.12); }
+function beepMark() { beep([660,880], 0.15); }
+function beepSave()  { beep([440,660,1100], 0.15); }
 
 // ── GPS CONTINUO ─────────────────────────────────────────
 function startGPS() {
@@ -265,7 +265,8 @@ function toggleMapType(){
 pins.forEach(addMarker);
 updateCounter();
 startGPS();
-window.addEventListener('load',()=>setTimeout(startVoice,1000));
+window.addEventListener("load",()=>setTimeout(startVoice,1000));
+window.addEventListener("load",()=>setTimeout(requestWakeLock,500));
 
 // ── LÓGICA DE VOZ ────────────────────────────────────────
 function startVoice(){
@@ -489,6 +490,25 @@ function toggleNoteVoice(){
 function stopNoteVoice(){
   if(noteListening){noteListening=false;noteRecog&&noteRecog.stop();const btn=document.getElementById('noteVoiceBtn');if(btn){btn.classList.remove('active');btn.innerHTML='🎤';}}
 }
+
+// ── WAKE LOCK ───────────────────────────────────────────
+let wakeLock = null;
+async function requestWakeLock() {
+  try {
+    if ("wakeLock" in navigator) {
+      wakeLock = await navigator.wakeLock.request("screen");
+      setWLS("🔆 Pantalla activa", "var(--accent3)");
+      wakeLock.addEventListener("release", () => setWLS("⚠️ Pantalla puede bloquearse","#ffcc00"));
+    } else { setWLS("⚠️ Mantén pantalla encendida","#ffcc00"); }
+  } catch(e) { setWLS("⚠️ Mantén pantalla encendida","#ffcc00"); }
+}
+function setWLS(t,c){const el=document.getElementById("wakeLockStatus");if(el){el.textContent=t;el.style.color=c;}}
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState === "visible") {
+    await requestWakeLock();
+    if (listening && recog) { try{recog.stop();}catch(e){} setTimeout(()=>recog.start(),400); }
+  }
+});
 
 // ── UTILS ────────────────────────────────────────────────
 function updateCounter(){ document.getElementById('counter').textContent=pins.length; }
